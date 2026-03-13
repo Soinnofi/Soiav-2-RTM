@@ -4484,3 +4484,615 @@ toggleStartMenuMode = function() {
     }
     localStorage.setItem('soiav-start-menu-mode', startMenuMode);
 };
+// ================== СИСТЕМА ДИСКОВ ==================
+
+let disks = [
+    {
+        id: 'C',
+        name: 'Системный диск',
+        type: 'system',
+        icon: 'fas fa-windows',
+        total: 512,
+        used: 128,
+        free: 384,
+        format: 'NTFS',
+        removable: false,
+        iso: false,
+        essential: true,
+        letter: 'C:',
+        mountPoint: '/',
+        files: [
+            { name: 'Windows', type: 'folder', path: '/Windows', size: '32 GB' },
+            { name: 'Program Files', type: 'folder', path: '/Program Files', size: '15 GB' },
+            { name: 'Users', type: 'folder', path: '/Users', size: '45 GB' },
+            { name: 'Soiav', type: 'folder', path: '/Soiav', size: '8 GB' },
+            { name: 'bootmgr', type: 'file', path: '/bootmgr', size: '384 KB' },
+            { name: 'BOOTSECT.BAK', type: 'file', path: '/BOOTSECT.BAK', size: '8 KB' }
+        ]
+    },
+    {
+        id: 'D',
+        name: 'ISO диск',
+        type: 'iso',
+        icon: 'fas fa-compact-disc',
+        total: 50,
+        used: 35,
+        free: 15,
+        format: 'ISO 9660',
+        removable: false,
+        iso: true,
+        essential: true,
+        letter: 'D:',
+        mountPoint: '/iso',
+        files: [
+            { name: 'Soiav_2_RTM.iso', type: 'iso', path: '/Soiav_2_RTM.iso', size: '4.7 GB' },
+            { name: 'Windows_11.iso', type: 'iso', path: '/Windows_11.iso', size: '5.2 GB' },
+            { name: 'Ubuntu_22.04.iso', type: 'iso', path: '/Ubuntu_22.04.iso', size: '3.8 GB' },
+            { name: 'tools', type: 'folder', path: '/tools', size: '256 MB' }
+        ]
+    },
+    {
+        id: 'E',
+        name: 'Данные',
+        type: 'data',
+        icon: 'fas fa-hdd',
+        total: 2000,
+        used: 850,
+        free: 1150,
+        format: 'NTFS',
+        removable: false,
+        iso: false,
+        essential: false,
+        letter: 'E:',
+        mountPoint: '/data',
+        files: [
+            { name: 'Документы', type: 'folder', path: '/Документы', size: '120 GB' },
+            { name: 'Видео', type: 'folder', path: '/Видео', size: '450 GB' },
+            { name: 'Музыка', type: 'folder', path: '/Музыка', size: '80 GB' },
+            { name: 'Фото', type: 'folder', path: '/Фото', size: '200 GB' }
+        ]
+    },
+    {
+        id: 'F',
+        name: 'USB Flash',
+        type: 'usb',
+        icon: 'fas fa-usb',
+        total: 32,
+        used: 12,
+        free: 20,
+        format: 'FAT32',
+        removable: true,
+        iso: false,
+        essential: false,
+        letter: 'F:',
+        mountPoint: '/media/usb',
+        files: [
+            { name: 'документы', type: 'folder', path: '/документы', size: '2 GB' },
+            { name: 'установка.exe', type: 'exe', path: '/установка.exe', size: '45 MB' }
+        ]
+    },
+    {
+        id: 'G',
+        name: 'Виртуальный диск',
+        type: 'virtual',
+        icon: 'fas fa-database',
+        total: 100,
+        used: 30,
+        free: 70,
+        format: 'ext4',
+        removable: false,
+        iso: false,
+        essential: false,
+        letter: 'G:',
+        mountPoint: '/virtual',
+        files: [
+            { name: 'VirtualBox VMs', type: 'folder', path: '/VirtualBox VMs', size: '25 GB' }
+        ]
+    }
+];
+
+let mountedISOs = [];
+let connectedDevices = [];
+
+// ================== ФУНКЦИИ ДЛЯ ДИСКОВ ==================
+
+function openDiskManager() {
+    let manager = document.getElementById('diskManager');
+    if (!manager) {
+        manager = document.createElement('div');
+        manager.id = 'diskManager';
+        manager.className = 'printer-wizard';
+        manager.style.maxWidth = '800px';
+        manager.style.width = '90%';
+        manager.innerHTML = `
+            <div class="disk-manager-header">
+                <h2><i class="fas fa-hdd"></i> Управление дисками</h2>
+                <button onclick="closeDiskManager()" class="close-btn">×</button>
+            </div>
+            <div class="disk-list" id="diskList"></div>
+        `;
+        document.body.appendChild(manager);
+    }
+    manager.classList.add('active');
+    renderDiskList();
+}
+
+function closeDiskManager() {
+    const manager = document.getElementById('diskManager');
+    if (manager) manager.classList.remove('active');
+}
+
+function renderDiskList() {
+    const list = document.getElementById('diskList');
+    if (!list) return;
+    
+    let html = '';
+    disks.forEach(disk => {
+        const usedPercent = (disk.used / disk.total) * 100;
+        const freePercent = 100 - usedPercent;
+        
+        html += `
+            <div class="disk-item ${disk.essential ? 'essential' : ''}" onclick="openDisk('${disk.id}')">
+                <div class="disk-icon">
+                    <i class="${disk.icon}" style="color: ${disk.essential ? '#ff4444' : 'var(--accent-color)'};"></i>
+                </div>
+                <div class="disk-info">
+                    <div class="disk-name">
+                        ${disk.name} (${disk.letter})
+                        ${disk.essential ? '<span class="essential-badge">Системный</span>' : ''}
+                        ${disk.iso ? '<span class="iso-badge">ISO</span>' : ''}
+                        ${disk.removable ? '<span class="usb-badge">USB</span>' : ''}
+                    </div>
+                    <div class="disk-details">
+                        ${disk.format} • ${disk.total} GB • ${disk.used} GB использовано
+                    </div>
+                    <div class="disk-progress">
+                        <div class="disk-progress-bar">
+                            <div class="disk-progress-fill" style="width: ${usedPercent}%; background: ${usedPercent > 90 ? '#ff4444' : '#4caf50'};"></div>
+                        </div>
+                        <span class="disk-free">Свободно ${disk.free} GB</span>
+                    </div>
+                </div>
+                <div class="disk-actions">
+                    <button class="disk-btn" onclick="event.stopPropagation(); ejectDisk('${disk.id}')" ${!disk.removable ? 'disabled' : ''}>
+                        <i class="fas fa-eject"></i>
+                    </button>
+                    <button class="disk-btn" onclick="event.stopPropagation(); formatDisk('${disk.id}')" ${disk.essential ? 'disabled' : ''}>
+                        <i class="fas fa-eraser"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += `
+        <div class="disk-actions-bar">
+            <button class="setup-btn" onclick="createNewDisk()">
+                <i class="fas fa-plus"></i> Создать виртуальный диск
+            </button>
+            <button class="setup-btn" onclick="mountISO()">
+                <i class="fas fa-compact-disc"></i> Монтировать ISO
+            </button>
+            <button class="setup-btn" onclick="scanUSB()">
+                <i class="fas fa-sync-alt"></i> Обновить устройства
+            </button>
+        </div>
+    `;
+    
+    list.innerHTML = html;
+}
+
+function openDisk(diskId) {
+    const disk = disks.find(d => d.id === diskId);
+    if (!disk) return;
+    
+    const fileExplorer = document.getElementById('fileExplorer');
+    if (!fileExplorer) {
+        createFileExplorerWindow();
+    }
+    
+    document.getElementById('addressBar').textContent = `Этот компьютер > ${disk.name} (${disk.letter})`;
+    
+    let filesHTML = '';
+    disk.files.forEach(file => {
+        filesHTML += `
+            <div class="file-item" onclick="openFileSystemItem('${disk.id}', '${file.path}')">
+                <i class="fas fa-${file.type === 'folder' ? 'folder' : file.type === 'iso' ? 'compact-disc' : 'file'}"></i>
+                <span>${file.name}</span>
+                <span class="file-size">${file.size}</span>
+            </div>
+        `;
+    });
+    
+    document.getElementById('fileGrid').innerHTML = filesHTML;
+    openApp('fileExplorer');
+}
+
+function openFileSystemItem(diskId, path) {
+    showNotification('Файловая система', `Открытие: ${path}`);
+}
+
+function ejectDisk(diskId) {
+    const disk = disks.find(d => d.id === diskId);
+    if (disk && disk.removable) {
+        showNotification('Диск', `Извлечение ${disk.name}...`);
+        setTimeout(() => {
+            disk.connected = false;
+            renderDiskList();
+            showNotification('Диск', `${disk.name} можно извлечь`);
+        }, 1500);
+    }
+}
+
+function formatDisk(diskId) {
+    const disk = disks.find(d => d.id === diskId);
+    if (disk && !disk.essential) {
+        if (confirm(`Форматирование ${disk.name} удалит все данные. Продолжить?`)) {
+            showNotification('Диск', `Форматирование ${disk.name}...`);
+            setTimeout(() => {
+                disk.used = 0;
+                disk.free = disk.total;
+                disk.files = [];
+                renderDiskList();
+                showNotification('Диск', `${disk.name} отформатирован`);
+            }, 2000);
+        }
+    }
+}
+
+function createNewDisk() {
+    const name = prompt('Имя нового диска:', 'Новый диск');
+    if (!name) return;
+    
+    const size = prompt('Размер диска (GB):', '100');
+    if (!size) return;
+    
+    const types = ['data', 'virtual'];
+    const format = prompt('Формат (NTFS/FAT32/ext4):', 'NTFS');
+    
+    const newId = String.fromCharCode(90 - disks.length); // Z, Y, X...
+    
+    disks.push({
+        id: newId,
+        name: name,
+        type: 'virtual',
+        icon: 'fas fa-database',
+        total: parseInt(size),
+        used: 0,
+        free: parseInt(size),
+        format: format.toUpperCase(),
+        removable: false,
+        iso: false,
+        essential: false,
+        letter: newId + ':',
+        mountPoint: '/mnt/' + newId.toLowerCase(),
+        files: []
+    });
+    
+    renderDiskList();
+    showNotification('Диски', `Создан диск ${newId}: (${size} GB)`);
+}
+
+function mountISO() {
+    const isoDisk = disks.find(d => d.id === 'D');
+    if (!isoDisk) return;
+    
+    const isos = isoDisk.files.filter(f => f.type === 'iso');
+    
+    let html = '<div style="padding: 20px;"><h3>Выберите ISO образ</h3>';
+    isos.forEach(iso => {
+        html += `
+            <div class="iso-item" onclick="mountThisISO('${iso.name}')">
+                <i class="fas fa-compact-disc"></i> ${iso.name}
+            </div>
+        `;
+    });
+    html += '<button class="setup-btn secondary" onclick="closeISOMount()">Отмена</button></div>';
+    
+    const list = document.getElementById('diskList');
+    list.innerHTML = html;
+}
+
+function mountThisISO(isoName) {
+    mountedISOs.push(isoName);
+    showNotification('ISO', `Образ ${isoName} смонтирован`);
+    
+    // Создаем виртуальный привод
+    disks.push({
+        id: 'CD',
+        name: 'CD-ROM (' + isoName + ')',
+        type: 'cdrom',
+        icon: 'fas fa-compact-disc',
+        total: 4.7,
+        used: 4.7,
+        free: 0,
+        format: 'ISO 9660',
+        removable: true,
+        iso: true,
+        essential: false,
+        letter: 'CD:',
+        mountPoint: '/media/cdrom',
+        files: [
+            { name: 'setup.exe', type: 'exe', path: '/setup.exe', size: '2 MB' },
+            { name: 'README.txt', type: 'file', path: '/README.txt', size: '1 KB' }
+        ]
+    });
+    
+    renderDiskList();
+}
+
+function closeISOMount() {
+    renderDiskList();
+}
+
+function scanUSB() {
+    showNotification('USB', 'Поиск USB устройств...');
+    setTimeout(() => {
+        const newUSB = {
+            id: 'H',
+            name: 'New USB Device',
+            type: 'usb',
+            icon: 'fas fa-usb',
+            total: 64,
+            used: 0,
+            free: 64,
+            format: 'FAT32',
+            removable: true,
+            iso: false,
+            essential: false,
+            letter: 'H:',
+            mountPoint: '/media/usb1',
+            files: []
+        };
+        
+        if (!disks.some(d => d.id === 'H')) {
+            disks.push(newUSB);
+            showNotification('USB', 'Найдено новое устройство: USB Flash 64GB');
+        }
+        renderDiskList();
+    }, 2000);
+}
+
+// ================== ФАЙЛОВАЯ СИСТЕМА ==================
+
+let currentPath = '/';
+let fileSystem = {
+    '/': {
+        type: 'folder',
+        children: ['C:', 'D:', 'E:', 'F:', 'G:']
+    }
+};
+
+function createFileExplorerWindow() {
+    const desktop = document.querySelector('.desktop');
+    const explorer = document.createElement('div');
+    explorer.className = 'window';
+    explorer.id = 'fileExplorer';
+    explorer.innerHTML = `
+        <div class="window-header">
+            <span><img src="https://i.ibb.co/Z6BGYQLL/photo-output.png" style="width:20px;height:20px;"> Проводник</span>
+            <div class="window-controls">
+                <button class="window-control" onclick="minimizeWindow('fileExplorer')">–</button>
+                <button class="window-control" onclick="maximizeWindow('fileExplorer')">□</button>
+                <button class="window-control" onclick="closeWindow('fileExplorer')">×</button>
+            </div>
+        </div>
+        <div class="window-content">
+            <div class="explorer-toolbar">
+                <button class="toolbar-btn" onclick="navigateBack()"><i class="fas fa-arrow-left"></i></button>
+                <button class="toolbar-btn" onclick="navigateForward()"><i class="fas fa-arrow-right"></i></button>
+                <button class="toolbar-btn" onclick="navigateUp()"><i class="fas fa-arrow-up"></i></button>
+                <div class="address-bar" id="addressBar">Этот компьютер</div>
+                <button class="toolbar-btn" onclick="createNewFolder()"><i class="fas fa-folder-plus"></i></button>
+                <button class="toolbar-btn" onclick="openDiskManager()"><i class="fas fa-hdd"></i></button>
+            </div>
+            <div class="sidebar">
+                <div class="sidebar-item" onclick="showThisPC()">
+                    <i class="fas fa-desktop"></i> Этот компьютер
+                </div>
+                <div class="sidebar-item" onclick="showDisks()">
+                    <i class="fas fa-hdd"></i> Диски
+                </div>
+                <div class="sidebar-item" onclick="showNetwork()">
+                    <i class="fas fa-network-wired"></i> Сеть
+                </div>
+                <div class="sidebar-divider"></div>
+                ${disks.map(disk => `
+                    <div class="sidebar-item" onclick="openDisk('${disk.id}')">
+                        <i class="${disk.icon}"></i> ${disk.name} (${disk.letter})
+                    </div>
+                `).join('')}
+            </div>
+            <div class="file-grid" id="fileGrid"></div>
+        </div>
+    `;
+    desktop.appendChild(explorer);
+}
+
+function showThisPC() {
+    document.getElementById('addressBar').textContent = 'Этот компьютер';
+    
+    let html = '';
+    disks.forEach(disk => {
+        html += `
+            <div class="disk-card" onclick="openDisk('${disk.id}')">
+                <div class="disk-card-icon">
+                    <i class="${disk.icon}" style="font-size: 32px; color: ${disk.essential ? '#ff4444' : 'var(--accent-color)'};"></i>
+                </div>
+                <div class="disk-card-info">
+                    <div class="disk-card-name">${disk.name} (${disk.letter})</div>
+                    <div class="disk-card-details">${disk.total} GB • ${disk.format}</div>
+                    <div class="disk-card-progress">
+                        <div class="disk-progress-bar">
+                            <div class="disk-progress-fill" style="width: ${(disk.used/disk.total)*100}%"></div>
+                        </div>
+                        <span>${disk.free} GB свободно</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    document.getElementById('fileGrid').innerHTML = html;
+}
+
+function showDisks() {
+    showThisPC();
+}
+
+function showNetwork() {
+    document.getElementById('addressBar').textContent = 'Сеть';
+    document.getElementById('fileGrid').innerHTML = `
+        <div class="network-placeholder">
+            <i class="fas fa-network-wired" style="font-size: 48px; color: var(--text-secondary);"></i>
+            <p>Сетевые устройства не найдены</p>
+            <button class="setup-btn" onclick="scanNetwork()">Поиск устройств</button>
+        </div>
+    `;
+}
+
+function scanNetwork() {
+    showNotification('Сеть', 'Поиск устройств в сети...');
+}
+
+// ================== ВИРТУАЛЬНЫЕ МАШИНЫ ==================
+
+let virtualMachines = [
+    {
+        id: 1,
+        name: 'Windows 11',
+        os: 'Windows 11',
+        disk: 'G:',
+        ram: 4096,
+        cpu: 2,
+        status: 'stopped',
+        icon: 'fab fa-windows'
+    },
+    {
+        id: 2,
+        name: 'Ubuntu 22.04',
+        os: 'Ubuntu',
+        disk: 'G:',
+        ram: 2048,
+        cpu: 2,
+        status: 'running',
+        icon: 'fab fa-linux'
+    }
+];
+
+function openVirtualBox() {
+    let box = document.getElementById('virtualBox');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'virtualBox';
+        box.className = 'window';
+        box.innerHTML = `
+            <div class="window-header">
+                <span><i class="fas fa-cube"></i> VirtualBox</span>
+                <div class="window-controls">
+                    <button class="window-control" onclick="minimizeWindow('virtualBox')">–</button>
+                    <button class="window-control" onclick="maximizeWindow('virtualBox')">□</button>
+                    <button class="window-control" onclick="closeWindow('virtualBox')">×</button>
+                </div>
+            </div>
+            <div class="window-content">
+                <div class="vm-toolbar">
+                    <button class="toolbar-btn" onclick="newVM()"><i class="fas fa-plus"></i> Новая</button>
+                    <button class="toolbar-btn" onclick="startVM()"><i class="fas fa-play"></i> Пуск</button>
+                    <button class="toolbar-btn" onclick="pauseVM()"><i class="fas fa-pause"></i> Пауза</button>
+                    <button class="toolbar-btn" onclick="stopVM()"><i class="fas fa-stop"></i> Стоп</button>
+                </div>
+                <div class="vm-list" id="vmList"></div>
+            </div>
+        `;
+        document.querySelector('.desktop').appendChild(box);
+    }
+    renderVMList();
+    openApp('virtualBox');
+}
+
+function renderVMList() {
+    const list = document.getElementById('vmList');
+    if (!list) return;
+    
+    let html = '';
+    virtualMachines.forEach(vm => {
+        html += `
+            <div class="vm-item ${vm.status}">
+                <div class="vm-icon"><i class="${vm.icon}"></i></div>
+                <div class="vm-info">
+                    <div class="vm-name">${vm.name}</div>
+                    <div class="vm-specs">${vm.os} • ${vm.ram} MB • ${vm.cpu} ядра</div>
+                </div>
+                <div class="vm-status">
+                    <span class="status-dot ${vm.status}"></span>
+                    ${vm.status === 'running' ? 'Работает' : 'Остановлена'}
+                </div>
+                <div class="vm-actions">
+                    <button onclick="configureVM(${vm.id})"><i class="fas fa-cog"></i></button>
+                </div>
+            </div>
+        `;
+    });
+    
+    list.innerHTML = html;
+}
+
+function newVM() {
+    const name = prompt('Имя виртуальной машины:', 'Новая ВМ');
+    if (!name) return;
+    
+    const os = prompt('Операционная система (Windows/Linux):', 'Windows');
+    const ram = prompt('ОЗУ (MB):', '2048');
+    const cpu = prompt('Ядра CPU:', '2');
+    
+    virtualMachines.push({
+        id: virtualMachines.length + 1,
+        name: name,
+        os: os,
+        disk: 'G:',
+        ram: parseInt(ram),
+        cpu: parseInt(cpu),
+        status: 'stopped',
+        icon: os.includes('Windows') ? 'fab fa-windows' : 'fab fa-linux'
+    });
+    
+    renderVMList();
+    showNotification('VirtualBox', `Создана ВМ: ${name}`);
+}
+
+function startVM() {
+    showNotification('VirtualBox', 'Запуск виртуальной машины...');
+}
+
+function pauseVM() {
+    showNotification('VirtualBox', 'Пауза');
+}
+
+function stopVM() {
+    showNotification('VirtualBox', 'Остановка...');
+}
+
+// ================== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ==================
+
+function checkSystemDisks() {
+    const systemDisk = disks.find(d => d.id === 'C');
+    const isoDisk = disks.find(d => d.id === 'D');
+    
+    if (!systemDisk || !isoDisk) {
+        showNotification('Ошибка', 'Системные диски повреждены!');
+        return false;
+    }
+    
+    if (systemDisk.used > systemDisk.total * 0.95) {
+        showNotification('Предупреждение', 'Мало места на системном диске');
+    }
+    
+    return true;
+}
+
+// Проверяем диски при загрузке
+checkSystemDisks();
+
+// Периодическая проверка
+setInterval(checkSystemDisks, 60000);
